@@ -1,0 +1,206 @@
+/*1 - Listar todos os clientes ativos da empresa, exibindo nome, e-mail e data de cadastro.*/
+
+SELECT DISTINCT ---Seleciona linhas unicas para evitar duplicata---
+    c.FirstName, ---Seleção das Colunas da tabela DimCustomer---
+    c.EmailAddress, 
+    c.DateFirstPurchase,
+    SUM(s.SalesAmount) AS TotalSalesAmount ---calcula a soma da tabela e renomeia---
+FROM ---indicação da tabela escolhida---
+    DimCustomer c 
+INNER JOIN ---faz uma junção entre as tabelas onde a uma coluna coincide em ambas---
+    dbo.FactInternetSales s 
+    ON c.CustomerKey = s.CustomerKey ---as colunas que são iguais---
+WHERE ---filtra as linhas não nulo---
+    s.SalesAmount IS NOT NULL AND
+    s.OrderDate <= DATEADD(YEAR, -1, GETDATE())---Ordena a data menor ou igual a um ano atras---
+GROUP BY ---Agrupa os resultados das colunas abaixo---
+    c.FirstName, 
+    c.EmailAddress, 
+    c.DateFirstPurchase
+ORDER BY ---Ordena os resultados em ordem ascedente e descendente---
+    c.FirstName, 
+    TotalSalesAmount DESC,
+    c.DateFirstPurchase ASC;
+
+
+
+/*2 - Identificar os produtos mais vendidos, listando nome, categoria e quantidade total vendida nos últimos 12 meses.*/
+
+SELECT ---Seleciona as colunas que serão exibidas no resultado.---
+    p.EnglishProductName AS produto,
+    c.EnglishProductCategoryName AS categoria,
+    SUM(f.OrderQuantity) AS quantidade_total_vendida ---Calcula a soma da quantidade de pedidos da tabela e renomeia---
+
+FROM FactInternetSales f --- Indica que os dados são obtidos da tabela FactInternetSales---
+
+INNER JOIN DimProduct p ON f.ProductKey = p.ProductKey --- Realiza uma junção interna---
+LEFT JOIN DimProductSubcategory s ON p.ProductSubcategoryKey = s.ProductSubcategoryKey ---Realiza uma junção à esquerda ---
+LEFT JOIN DimProductCategory c ON s.ProductCategoryKey = c.ProductCategoryKey---Realiza uma junção à esquerda ---
+
+WHERE f.OrderDate BETWEEN '2013-01-29' AND '2014-01-28'  --  Filtra as linhas onde OrderDate está entre 29 de janeiro de 2013 e 28 de janeiro de 2014.--
+
+GROUP BY p.EnglishProductName, c.EnglishProductCategoryName ---Agrupa os resultados por EnglishProductName e EnglishProductCategoryName.---
+ORDER BY quantidade_total_vendida DESC; ---Ordena os resultados pela quantidade_total_vendida em ordem decrescente.---
+
+
+
+/*3 - Calcular o faturamento mensal, agrupando o total de vendas por mês nos últimos dois anos.*/
+
+SELECT ---Seleciona as colunas que serão exibidas no resultado.---
+    YEAR(OrderDate) AS Ano, --- Extrai o ano da coluna OrderDate e o renomeia como Ano.---
+    MONTH(OrderDate) AS Mes, ---Extrai o mês da coluna OrderDate e o renomeia como Mes.---
+    SUM(SalesAmount) AS Faturamento  ---Calcula a soma da coluna SalesAmount e a renomeia como Faturamento.---
+
+FROM FactInternetSales  ---Indica que os dados são obtidos da tabela FactInternetSales---
+
+WHERE OrderDate >= '2012-01-01' AND OrderDate < '2014-01-01'  ---Filtra as linhas onde OrderDate está entre 1 de janeiro de 2012 e 31 de dezembro de 2013.---
+
+GROUP BY YEAR(OrderDate), MONTH(OrderDate)  ---Agrupa os resultados por ano e mês extraídos da coluna OrderDate.---
+ORDER BY Ano DESC, Mes DESC; ---Ordena os resultados por Ano em ordem decrescente e, dentro de cada ano, por Mes em ordem decrescente.---
+
+
+
+/*4 - Exibir os 5 clientes com maior volume de compras, incluindo nome, e-mail e valor total gasto.*/
+
+SELECT TOP 5  ---Seleciona as 5 primeiras linhas dos resultados---
+    c.FirstName AS Primeiro_Nome,  ---Seleciona a coluna FirstName da tabela DimCustomer e a renomeia como Primeiro_Nome.---
+    c.EmailAddress AS Email, --Seleciona a coluna EmailAddress da tabela DimCustomer e a renomeia como Email.--
+    SUM(s.SalesAmount) AS 'Total Compras'---Calcula a soma da coluna SalesAmount da tabela FactInternetSales e a renomeia como TotalSalesAmount.---
+FROM --- Indica que os dados são obtidos da tabela ---
+    DimCustomer c
+INNER JOIN -- Realiza uma junção interna entre tabelas--
+    FactInternetSales s 
+    ON c.CustomerKey = s.CustomerKey --tabela que coincide--
+GROUP BY --Agrupa os resultados--
+    c.FirstName, 
+    c.EmailAddress
+ORDER BY --Ordena os resultados pela soma do valor de forma decrescente --
+    'Total Compras' DESC;
+
+	
+
+/*5 - Determinar o ticket médio por pedido, calculando a média de valor gasto por transação.*/ 
+
+SELECT -- Calcula a média do valor gasto (SalesAmount) por pedido (SalesOrderNumber), que é o ticket médio por transação.--
+    SalesOrderNumber AS pedido, 
+    AVG(SalesAmount) AS ticket_medio
+FROM --Indica que os dados são obtidos da tabela FactInternetSales.--
+    FactInternetSales
+GROUP BY ---Agrupa os resultados por SalesOrderNumber para calcular a média de SalesAmount para cada pedido.---
+    SalesOrderNumber;
+
+
+
+/*6 - Listar os estados com maior volume de pedidos, gerando um ranking das regiões mais ativas.*/
+
+
+	WITH RankedStates AS ( --Utiliza uma CTE (Common Table Expression) para criar uma tabela temporária chamada RankedStates que contém os estados e o volume de pedidos.--
+    SELECT --Seleciona o nome do estado (StateProvinceName) e conta o número de pedidos (SalesOrderNumber).--
+        o.StateProvinceName AS Estado,
+        COUNT(s.SalesOrderNumber) AS Volume_De_Pedidos
+    FROM --Realiza uma junção interna entre FactInternetSales e DimGeography usando a coluna GeographyKey.--
+        FactInternetSales s,
+        DimGeography o
+    GROUP BY --Agrupa os resultados por StateProvinceName.--
+        o.StateProvinceName
+)
+SELECT ---Seleciona o estado, formata o volume de pedidos com separadores de milhar e adiciona uma coluna de ranking baseada no volume de pedidos em ordem decrescente.--
+    Estado,
+    FORMAT(Volume_De_Pedidos, 'N0') AS Volume_De_Pedidos,
+    RANK() OVER (ORDER BY Volume_De_Pedidos DESC) AS Ranking
+FROM --chamada de ação (CTE)--
+    RankedStates
+ORDER BY ---Ordena os resultados pelo ranking.--
+    Ranking;
+
+	
+/*7 - Analisar a taxa de recompra, verificando quantos clientes realizaram mais de uma compra no último ano.*/
+
+ SELECT --Seleciona as colunas que serão exibidas no resultado e renomeia.--
+    c.CustomerKey as Id_Cliente,
+    c.FirstName as Primeiro_Nome,
+    c.LastName AS Sobrenome,
+    COUNT(distinct s.SalesOrderNumber) AS NumerosdeCompras --Conta o número de pedidos distintos das tabelas e renomeia.--
+FROM --Indica que os dados são obtidos da tabela DimCustomer--
+    DimCustomer c
+INNER JOIN --Realiza uma junção interna entre DimCustomer e FactInternetSales onde CustomerKey coincide em ambas as tabelas.--
+    FactInternetSales s 
+    ON c.CustomerKey = s.CustomerKey
+WHERE --Filtra as linhas onde OrderDate está entre 1 de janeiro de 2013 e 31 de dezembro de 2013.--
+    s.OrderDate >= '2013-01-01' AND s.OrderDate < '2014-01-01'
+GROUP BY --Agrupa os resultados por CustomerKey, FirstName e LastName.--
+    c.CustomerKey, c.FirstName, c.LastName
+HAVING --Filtra os grupos para incluir apenas aqueles onde o número de pedidos distintos (SalesOrderNumber) é maior que 1.--
+    COUNT(distinct s.SalesOrderNumber) > 1
+ORDER BY --Ordena os resultados pelo número de compras (NumeroDeCompras) em ordem decrescente.--
+    NumerosdeCompras DESC;
+
+
+/*8 - Identificar pedidos suspeitos de fraude, analisando compras repetidas do mesmo produto por um mesmo cliente no mesmo dia.*/
+
+	SELECT  ---Seleciona as colunas que serão exibidas no resultado.---
+    COALESCE(dc.FirstName, '') + ' ' +  ---Combina os nomes FirstName, MiddleName e LastName da tabela DimCustomer em um único campo nome_completo, usando COALESCE para substituir valores nulos por uma string vazia.---
+    COALESCE(dc.MiddleName, '') + ' ' + 
+    COALESCE(dc.LastName, '') AS nome_completo,
+    dc.EmailAddress AS email,
+    fs.ProductKey as id_produto,
+    p.EnglishProductName AS produto,
+    fs.OrderDate as Data_De_Compra,
+    COUNT(*) AS quantidade_repetida  ---Conta o número de ocorrências e renomeia como quantidade_repetida.---
+FROM [dbo].[DimCustomer] dc ---Indica que os dados são obtidos da tabela DimCustomer---
+INNER JOIN [dbo].[FactInternetSales] fs ON dc.CustomerKey = fs.CustomerKey ---Realiza uma junção interna entre DimCustomer e FactInternetSales onde CustomerKey coincide em ambas as tabelas.---
+INNER JOIN [dbo].[DimProduct] p ON fs.ProductKey = p.ProductKey --- Realiza uma junção interna entre FactInternetSales e DimProduct onde ProductKey coincide em ambas as tabelas.---
+GROUP BY ---Agrupa os resultados por CustomerKey, FirstName, MiddleName, LastName, EmailAddress, ProductKey, EnglishProductName e OrderDate.---
+    dc.CustomerKey, dc.FirstName, dc.MiddleName, dc.LastName, dc.EmailAddress,
+    fs.ProductKey, p.EnglishProductName, fs.OrderDate
+HAVING COUNT(*) > 1 ---Filtra os grupos para incluir apenas aqueles onde o número de ocorrências é maior que 1.---
+ORDER BY Data_De_Compra, id_produto desc; --- Ordena os resultados por Data_De_Compra em ordem ascendente e, dentro de cada data, por id_produto em ordem decrescente.---
+
+
+
+/*9 - Gerar um relatório de desempenho de fornecedores, listando os que mais forneceram produtos e seus tempos médios de entrega.*/
+
+SELECT ---Seleciona as colunas que serão exibidas no resultado.---
+    r.ResellerName AS Fornecedor,
+    SUM(OrderQuantity) AS NumeroDeProdutos, ---Calcula a soma da coluna OrderQuantity e a renomeia como NumeroDeProdutos.---
+    AVG(DATEDIFF(DAY, rs.OrderDate, rs.ShipDate)) AS TempoMedioDeEntrega ---Calcula a média da diferença em dias entre OrderDate e ShipDate e a renomeia como TempoMedioDeEntrega---
+FROM  ---Indica que os dados são obtidos da tabela DimReseller ---
+    DimReseller r
+INNER JOIN --- Agrupa os resultados por ResellerName.---
+    FactResellerSales rs 
+    ON r.ResellerKey = rs.ResellerKey
+GROUP BY ---Agrupa os resultados por ResellerName.---
+    r.ResellerName
+ORDER BY ---Ordena os resultados pela soma do número de produtos (NumeroDeProdutos) em ordem decrescente.---
+    NumeroDeProdutos DESC;
+
+
+
+/*10 - Identificar clientes inativos, listando aqueles que não realizaram nenhuma compra no último ano, para direcionar campanhas de marketing.*/
+
+SELECT ---Seleciona as colunas que serão exibidas no resultado.---
+    c.FirstName, 
+    c.EmailAddress, 
+    c.DateFirstPurchase,
+    SUM(s.SalesAmount) AS Total_Compras ---Calcula a soma da coluna SalesAmount da tabela FactInternetSales e a renomeia como Total_Compras.---
+
+FROM ---Indica que os dados são obtidos da tabela DimCustomer---
+    DimCustomer c 
+LEFT JOIN ---Realiza uma junção à esquerda entre DimCustomer e FactInternetSales ---
+    dbo.FactInternetSales s 
+    ON c.CustomerKey = s.CustomerKey 
+    AND s.OrderDate<= '2013-01-01' AND s.OrderDate < '2014-01-01'
+
+WHERE ---Filtra os resultados para incluir apenas os clientes que não têm pedidos (SalesOrderNumber é nulo) no período especificado.---
+	s.SalesOrderNumber IS NULL
+
+GROUP BY ---Agrupa os resultados por FirstName, EmailAddress e DateFirstPurchase.---
+    c.FirstName, 
+    c.EmailAddress, 
+    c.DateFirstPurchase
+
+ORDER BY ---Ordena os resultados por FirstName em ordem ascendente, Total_Compras em ordem decrescente e DateFirstPurchase em ordem ascendente.---
+    c.FirstName, 
+    Total_Compras DESC,
+    c.DateFirstPurchase ASC;
+ 
